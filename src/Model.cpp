@@ -11,6 +11,8 @@ QuadModel::QuadModel(
 	ID3D11DeviceContext* dxdevice_context)
 	: Model(dxdevice, dxdevice_context)
 {
+	InitMaterialBuffer();
+
 	// Vertex and index arrays
 	// Once their data is loaded to GPU buffers, they are not needed anymore
 	std::vector<Vertex> vertices;
@@ -79,6 +81,8 @@ QuadModel::QuadModel(
 
 void QuadModel::Render() const
 {
+	dxdevice_context->PSSetConstantBuffers(1, 1, &material_buffer);
+
 	// Bind our vertex buffer
 	const UINT32 stride = sizeof(Vertex); //  sizeof(float) * 8;
 	const UINT32 offset = 0;
@@ -98,10 +102,11 @@ OBJModel::OBJModel(
 	ID3D11DeviceContext* dxdevice_context)
 	: Model(dxdevice, dxdevice_context)
 {
+
 	// Load the OBJ
 	OBJLoader* mesh = new OBJLoader();
 	mesh->Load(objfile);
-
+	InitMaterialBuffer();
 	// Load and organize indices in ranges per drawcall (material)
 
 	std::vector<unsigned> indices;
@@ -119,6 +124,14 @@ OBJModel::OBJModel(
 		index_ranges.push_back({ i_ofs, i_size, 0, mtl_index });
 
 		i_ofs = (unsigned int)indices.size();
+	}
+
+	for (int i = 0; i < indices.size(); i += 3) {
+		ComputeTangentSpace(
+			mesh->vertices[indices[i]],
+			mesh->vertices[indices[i + 1]], 
+			mesh->vertices[indices[i + 2]]
+		);
 	}
 
 	// Vertex array descriptor
@@ -172,8 +185,20 @@ OBJModel::OBJModel(
 
 		// + other texture types here - see Material class
 		// ...
+
+		if (mtl.normal_texture_filename.size()) {
+
+			hr = LoadTextureFromFile(
+				dxdevice,
+				mtl.normal_texture_filename.c_str(),
+				&mtl.normal_texture);
+			std::cout << "\t" << mtl.normal_texture_filename
+				<< (SUCCEEDED(hr) ? " - OK" : "- FAILED") << std::endl;
+		}
 	}
 	std::cout << "Done." << std::endl;
+
+	
 
 	SAFE_DELETE(mesh);
 }
@@ -184,6 +209,7 @@ void OBJModel::Render() const
 	// Bind vertex buffer
 	const UINT32 stride = sizeof(Vertex);
 	const UINT32 offset = 0;
+	dxdevice_context->PSSetConstantBuffers(1, 1, &material_buffer);
 	dxdevice_context->IASetVertexBuffers(0, 1, &vertex_buffer, &stride, &offset);
 
 	// Bind index buffer
@@ -198,6 +224,9 @@ void OBJModel::Render() const
 		// Bind diffuse texture to slot t0 of the PS
 		dxdevice_context->PSSetShaderResources(0, 1, &mtl.diffuse_texture.texture_SRV);
 		// + bind other textures here, e.g. a normal map, to appropriate slots
+		dxdevice_context->PSSetShaderResources(1, 1, &mtl.normal_texture.texture_SRV);
+
+		UpdateMaterialBuffer(mtl);
 
 		// Make the drawcall
 		dxdevice_context->DrawIndexed(irange.size, irange.start, 0);
@@ -211,5 +240,59 @@ OBJModel::~OBJModel()
 		SAFE_RELEASE(material.diffuse_texture.texture_SRV);
 
 		// Release other used textures ...
+		SAFE_RELEASE(material.normal_texture.texture_SRV);
 	}
+}
+
+void Model::InitMaterialBuffer()
+{
+	HRESULT hr;
+	D3D11_BUFFER_DESC MatrixBuffer_desc = { 0 };
+	MatrixBuffer_desc.Usage = D3D11_USAGE_DYNAMIC;
+	MatrixBuffer_desc.ByteWidth = sizeof(MaterialBuffer);
+	MatrixBuffer_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	MatrixBuffer_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	MatrixBuffer_desc.MiscFlags = 0;
+	MatrixBuffer_desc.StructureByteStride = 0;
+	ASSERT(hr = dxdevice->CreateBuffer(&MatrixBuffer_desc, nullptr, &material_buffer));
+}
+
+void Model::UpdateMaterialBuffer(Material material) const
+{
+	// Map the resource buffer, obtain a pointer and then write our matrices to it
+	D3D11_MAPPED_SUBRESOURCE resource;
+	dxdevice_context->Map(material_buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
+	MaterialBuffer* matrix_buffer_ = (MaterialBuffer*)resource.pData;
+	matrix_buffer_->Ambient = material.Ka.xyz0();
+	matrix_buffer_->Diffuse = material.Kd.xyz0();
+	matrix_buffer_->Specular = material.Ks.xyz0();
+	dxdevice_context->Unmap(material_buffer, 0);
+}
+
+void Model::ComputeTangentSpace(Vertex& v0, Vertex& v1, Vertex& v2)
+{
+	float tx, ty, tz;
+	float bx, by, bz;
+
+	vec3f D = v1.Pos - v0.Pos;
+	vec3f E = v2.Pos - v0.Pos;
+
+	vec2f F = v1.TexCoord - v0.TexCoord;
+	vec2f G = v2.TexCoord - v0.TexCoord;
+
+	float inverseFG = (1 / (F.x * G.y - F.y * G.x));
+
+	tx = inverseFG * (G.y * D.x - F.y * E.x);
+	ty = inverseFG * (G.y * D.y - F.y * E.y);
+	tz = inverseFG * (G.y * D.z - F.y * E.z);
+
+	bx = inverseFG * (-G.x * D.x + F.x * E.x);
+	by = inverseFG * (-G.x * D.y + F.x * E.y);
+	bz = inverseFG * (-G.x * D.z + F.x * E.z);
+
+	vec3f tangent = { tx, ty, tz };
+	vec3f binormal = { bx, by, bz };
+
+	v0.Tangent = v1.Tangent = v2.Tangent = tangent;
+	v0.Binormal = v1.Binormal = v2.Binormal = binormal;
 }

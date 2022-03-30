@@ -31,14 +31,35 @@ protected:
 	ID3D11Buffer* vertex_buffer = nullptr;
 	ID3D11Buffer* index_buffer = nullptr;
 
+	
+
+	
+
 public:
+
+	ID3D11Buffer* material_buffer = nullptr;
+
+	struct MaterialBuffer
+	{
+		vec4f Ambient;
+		vec4f Diffuse;
+		vec4f Specular;
+	};
 
 	Model(
 		ID3D11Device* dxdevice, 
 		ID3D11DeviceContext* dxdevice_context) 
 		:	dxdevice(dxdevice),
 			dxdevice_context(dxdevice_context)
-	{ }
+	{ 
+		
+	}
+
+	void InitMaterialBuffer();
+
+	void UpdateMaterialBuffer(Material material) const;
+
+	void ComputeTangentSpace(Vertex& v0, Vertex& v1, Vertex& v2);
 
 	//
 	// Abstract render method: must be implemented by derived classes
@@ -52,6 +73,7 @@ public:
 	{ 
 		SAFE_RELEASE(vertex_buffer);
 		SAFE_RELEASE(index_buffer);
+		SAFE_RELEASE(material_buffer);
 	}
 };
 

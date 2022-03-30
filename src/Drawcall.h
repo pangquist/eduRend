@@ -40,11 +40,22 @@ struct Material
 	// File paths to textures
 	std::string Kd_texture_filename;
 	std::string normal_texture_filename;
+	// Array of paths to cube map images
+	const char* cube_filenames[6] =
+	{
+	"assets/[path to +x image]",
+	"assets/[path to -x image]",
+	"assets/[path to +y image]",
+	"assets/[path to -y image]",
+	"assets/[path to +z image]",
+	"assets/[path to -z image]"
+	};
 	// + more texture types (extend OBJLoader::LoadMaterials if needed)
 
 	// Device textures
 	Texture diffuse_texture;
 	// + other texture types
+	Texture normal_texture;
 };
 
 static Material DefaultMaterial = Material();

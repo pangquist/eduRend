@@ -8,6 +8,7 @@
 #include "Camera.h"
 #include "Model.h"
 #include "Texture.h"
+#include "Cube.h"
 
 // New files
 // Material
@@ -56,17 +57,26 @@ class OurTestScene : public Scene
 	// CBuffer for transformation matrices
 	ID3D11Buffer* transformation_buffer = nullptr;
 	// + other CBuffers
-
+	ID3D11Buffer* light_buffer = nullptr;
 	// 
 	// CBuffer client-side definitions
 	// These must match the corresponding shader definitions 
 	//
+	ID3D11SamplerState* samplerState = nullptr;
+	std::vector<ID3D11SamplerState*> samplerStates;
+	int samplerStateIndex = 0;
 
 	struct TransformationBuffer
 	{
 		mat4f ModelToWorldMatrix;
 		mat4f WorldToViewMatrix;
 		mat4f ProjectionMatrix;
+	};
+
+	struct LightBuffer
+	{
+		vec4f LightSourcePosition;
+		vec4f CameraPosition;
 	};
 
 	//
@@ -76,10 +86,18 @@ class OurTestScene : public Scene
 
 	QuadModel* quad;
 	OBJModel* sponza;
+	Cube* cube;
+	Cube* child;
+
+	vec3f lightSource;
+	float lightZ;
+	bool lightDir;
 
 	// Model-to-world transformation matrices
 	mat4f Msponza;
 	mat4f Mquad;
+	mat4f Mcube;
+	mat4f Mchild;
 
 	// World-to-view matrix
 	mat4f Mview;
@@ -89,15 +107,21 @@ class OurTestScene : public Scene
 	// Misc
 	float angle = 0;			// A per-frame updated rotation angle (radians)...
 	float angle_vel = fPI / 2;	// ...and its velocity (radians/sec)
-	float camera_vel = 5.0f;	// Camera movement velocity in units/s
+	float camera_vel = 10.0f;	// Camera movement velocity in units/s
 	float fps_cooldown = 0;
 
 	void InitTransformationBuffer();
+
+	void InitLightBuffer();
 
 	void UpdateTransformationBuffer(
 		mat4f ModelToWorldMatrix,
 		mat4f WorldToViewMatrix,
 		mat4f ProjectionMatrix);
+
+	void UpdateLightBuffer(
+		vec4f LightSourcePosition,
+		vec4f CameraPosition);
 
 public:
 	OurTestScene(
@@ -119,6 +143,8 @@ public:
 	void WindowResize(
 		int window_width,
 		int window_height) override;
+
+	void CreateSamplerState();
 };
 
 #endif
